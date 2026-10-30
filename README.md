@@ -17,6 +17,13 @@ pytest              # runs the unit tests
 
 In VS Code, select the `statphys_lab1` interpreter (Ctrl+Shift+P → *Python: Select Interpreter*).
 
+**Windows 11 with Smart App Control on:** some conda-forge DLLs get blocked, and matplotlib fails with *"DLL load failed … An Application Control policy has blocked this file"* or crashes with code `0xc06d007f` when saving a figure. Create the same environment from Anaconda's `defaults` channel instead:
+
+```bash
+conda env remove -n statphys_lab1
+conda create -n statphys_lab1 --override-channels -c defaults python=3.11 "numpy>=1.24" "scipy>=1.10" "matplotlib>=3.7" "pytest>=7.0" jupyter
+```
+
 ## Repository layout
 
 | Path | Content | Lab questions |
