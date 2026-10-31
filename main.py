@@ -6,7 +6,7 @@ Each part is added by its owner as the modules in src/ are completed.
 
 def main() -> None:
     print("Statistical Physics - Lab 1: Microstates of a System of Coins")
-    #print("Hello")
+
 
 if __name__ == "__main__":
     main()
