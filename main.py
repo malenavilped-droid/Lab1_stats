@@ -18,6 +18,13 @@ matplotlib.use("Agg")  # write files only, no window
 import matplotlib.pyplot as plt
 import numpy as np
 
+from src.combinatorics import (
+    largest_n_float_omega,
+    largest_n_naive_float,
+    log_multiplicities,
+    multiplicities_exact,
+    probabilities,
+)
 from src.microstates import (
     benchmark_enumeration,
     list_microstates_by_macrostate,
@@ -27,6 +34,16 @@ from src.microstates import (
 
 FIGURES = Path(__file__).parent / "report" / "figures"
 TIME_LIMIT_S = 300.0  # 5 minutes of wall-clock time (question 1b)
+
+
+def _time_call(func, n: int, repeats: int = 3) -> tuple[float, float]:
+    """Mean and standard deviation (s) of the wall-clock time of func(n) over repeats."""
+    times = []
+    for _ in range(repeats):
+        t0 = time.perf_counter()
+        func(n)
+        times.append(time.perf_counter() - t0)
+    return float(np.mean(times)), float(np.std(times))
 
 
 def part_1a(n: int = 7) -> None:
@@ -82,6 +99,89 @@ def part_1b(max_n: int, repeats: int = 3) -> None:
     print(f"Figure written to {out}")
 
 
+N_VALUES_1C = (20, 50, 80, 100)
+# Categorical palette (blue, orange, aqua, yellow), one colour per N.
+COLORS_1C = ("#2a78d6", "#eb6834", "#1baf7a", "#eda100")
+
+
+def part_1c() -> None:
+    """1c: Omega(N, k) for N = 20, 50, 80, 100 on one figure with two panels.
+
+    (a) is what the guide asks for: exact Omega against k, on a log axis because
+    Omega(100, 50) ~ 1e29 and Omega(20, 10) ~ 2e5. (b) is the same data normalised,
+    N P_k against k/N, so every curve has area 1 and the narrowing peak is visible.
+    """
+    print(f"\n=== 1c: macrostate distributions for N = {', '.join(map(str, N_VALUES_1C))} ===")
+    print(f"{'N':>4}{'2^N':>14}{'max Omega (k = N/2)':>24}{'sum Omega = 2^N':>18}")
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(10, 4))
+    rows = {}
+    for n, color in zip(N_VALUES_1C, COLORS_1C):
+        omega = multiplicities_exact(n)  # exact Python ints
+        # Cross-check the exact values with the log-space version.
+        assert np.allclose(np.log(np.array(omega, dtype=float)), log_multiplicities(n), rtol=1e-12)
+        rows[n] = omega
+        print(f"{n:>4}{float(2**n):>14.3e}{float(max(omega)):>24.4e}{str(sum(omega) == 2**n):>18}")
+        k = np.arange(n + 1)
+        ax_a.plot(k, [float(x) for x in omega], "o-", color=color, lw=1.5, ms=3, label=f"$N = {n}$")
+        ax_b.plot(k / n, n * probabilities(n), "-", color=color, lw=1.8, label=f"$N = {n}$")
+
+    ax_a.set_yscale("log")
+    ax_a.set_xlabel("Number of heads $k$")
+    ax_a.set_ylabel(r"Multiplicity $\Omega(N, k)$")
+    ax_a.set_title("(a) Number of microstates per macrostate", fontsize=10, loc="left")
+    ax_b.set_xlabel("Fraction of heads $k/N$")
+    ax_b.set_ylabel(r"Probability density $N\,P_k$")
+    ax_b.set_title(r"(b) Normalised: $P_k = \Omega / 2^N$", fontsize=10, loc="left")
+    ax_b.set_xlim(0, 1)
+    ax_b.set_ylim(bottom=0)
+    for ax in (ax_a, ax_b):
+        ax.legend(frameon=False)
+        ax.grid(True, color="#e4e3df", lw=0.6)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    fig.tight_layout()
+    out = FIGURES / "multiplicity_distribution.pdf"
+    fig.savefig(out)
+    plt.close(fig)
+    print("Exact integer values (no uncertainty); panel (b) uses the log-gamma probabilities.")
+    print(f"Figure written to {out}")
+
+    # Exact values for the report's appendix.
+    out = FIGURES.parent / "multiplicities_1c.txt"
+    with open(out, "w", encoding="utf-8") as f:
+        for n, omega in rows.items():
+            f.write(f"N = {n}: " + ", ".join(str(x) for x in omega) + "\n")
+    print(f"Exact values written to {out}")
+
+
+def part_1d(repeats: int = 3) -> None:
+    """1d: largest N for which the distribution can be computed and plotted, per method."""
+    print("\n=== 1d: largest N for the macrostate distribution ===")
+    n_fact = largest_n_naive_float()
+    n_omega = largest_n_float_omega()
+    print(f"float64 factorials N!/(k!(N-k)!): works up to N = {n_fact} ({n_fact + 1}! overflows to inf)")
+    print(f"Omega(N, N/2) itself as a float64: fits up to N = {n_omega} (largest float ~ 1.8e308);")
+    print("  beyond it Omega can only be kept as an exact int or as its logarithm, and")
+    print("  matplotlib needs floats, so Omega cannot be plotted directly")
+
+    print(f"\nExact ints (no overflow, cost grows ~ N^2), full row k = 0..N, {repeats} repeats:")
+    for n in (10**3, 3 * 10**3, 10**4, 3 * 10**4):  # N = 1e5 already takes ~7 s per row
+        mean, std = _time_call(multiplicities_exact, n, repeats)
+        print(f"  N = {n:>8}: {mean:.4f} +/- {std:.4f} s")
+
+    print(f"\nLog-space (no overflow for any N), full row k = 0..N, {repeats} repeats:")
+    print(f"{'N':>10}{'time (s)':>22}{'|sum P_k - 1|':>16}{'k with P_k > 0':>16}{'array (MiB)':>13}")
+    for n in (10**2, 10**4, 10**6, 10**7):
+        mean, std = _time_call(log_multiplicities, n, repeats)
+        p = probabilities(n)
+        nonzero = int(np.count_nonzero(p))
+        print(f"{n:>10}{f'{mean:.4f} +/- {std:.4f}':>22}{abs(p.sum() - 1):>16.1e}"
+              f"{f'{nonzero}/{n + 1}':>16}{8 * (n + 1) / 2**20:>13.1f}")
+    print("Limits of log-space: precision (ln Omega ~ N ln 2, so rounding grows with N),")
+    print("  P_k of the far tails underflows to 0, and memory/plotting of N + 1 points.")
+
+
 def find_limit(start_n: int = 24) -> None:
     """1b: enumerate N = start_n, start_n + 1, ... until one run exceeds 5 minutes."""
     print(f"\n=== 1b: largest N enumerated in at most {TIME_LIMIT_S:.0f} s ===")
@@ -118,6 +218,8 @@ def main() -> None:
 
     part_1a()
     part_1b(args.max_n)
+    part_1c()
+    part_1d()
     if args.find_limit:
         find_limit()
 
