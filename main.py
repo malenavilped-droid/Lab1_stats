@@ -22,6 +22,7 @@ from src.microstates import (
     benchmark_enumeration,
     list_microstates_by_macrostate,
     macrostate_histogram_fast,
+    macrostate_label,
 )
 
 FIGURES = Path(__file__).parent / "report" / "figures"
@@ -34,14 +35,14 @@ def part_1a(n: int = 7) -> None:
     groups = list_microstates_by_macrostate(n)
     print(f"{'macrostate':<22}{'# microstates':>14}")
     for k, states in groups.items():
-        print(f"{f'{k} heads, {n - k} tails':<22}{len(states):>14}")
+        print(f"{macrostate_label(k, n):<22}{len(states):>14}")
     print(f"{'total':<22}{sum(len(s) for s in groups.values()):>14}  (2^{n} = {2**n})")
 
     # Full list for the report's appendix.
     out = FIGURES.parent / f"microstates_N{n}.txt"
     with open(out, "w", encoding="utf-8") as f:
         for k, states in groups.items():
-            f.write(f"{k} heads and {n - k} tails ({len(states)}): {', '.join(states)}\n")
+            f.write(f"{macrostate_label(k, n)} ({len(states)}): {', '.join(states)}\n")
     print(f"Full list written to {out}")
 
 
@@ -108,6 +109,9 @@ def main() -> None:
     parser.add_argument("--max-n", type=int, default=24, help="largest N in the 1b benchmark")
     parser.add_argument("--find-limit", action="store_true", help="search the 5-minute limit (slow)")
     args = parser.parse_args()
+    # The fit in part_1b uses N >= 16 and needs at least two points (N = 16 and 18).
+    if args.max_n < 18:
+        parser.error("--max-n must be >= 18")
 
     print("Statistical Physics - Lab 1: Microstates of a System of Coins")
     FIGURES.mkdir(parents=True, exist_ok=True)

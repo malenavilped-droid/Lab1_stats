@@ -2,13 +2,16 @@
 
 from math import comb
 
+import numpy as np
 import pytest
 
 from src.microstates import (
+    benchmark_enumeration,
     count_heads,
     list_microstates_by_macrostate,
     macrostate_histogram,
     macrostate_histogram_fast,
+    macrostate_label,
     microstates,
     state_to_string,
 )
@@ -65,3 +68,26 @@ def test_fast_histogram_with_small_chunks():
 
 def test_histogram_sums_to_2_pow_n():
     assert sum(macrostate_histogram_fast(18)) == 2**18
+
+
+def test_fast_histogram_lookup_table_fallback(monkeypatch):
+    # Force the numpy < 2.0 path (byte lookup table).
+    monkeypatch.delattr(np, "bitwise_count", raising=False)
+    assert macrostate_histogram_fast(20) == [comb(20, k) for k in range(21)]
+
+
+def test_fast_histogram_rejects_n_above_63():
+    with pytest.raises(ValueError):
+        macrostate_histogram_fast(64)
+
+
+def test_benchmark_returns_mean_std_ram():
+    mean, std, ram = benchmark_enumeration(12, repeats=3)
+    assert mean > 0 and std >= 0 and ram > 0
+    assert benchmark_enumeration(12, repeats=1)[1] == 0.0
+
+
+def test_macrostate_label_singular_and_plural():
+    assert macrostate_label(1, 7) == "1 head, 6 tails"
+    assert macrostate_label(6, 7) == "6 heads, 1 tail"
+    assert macrostate_label(0, 7) == "0 heads, 7 tails"
