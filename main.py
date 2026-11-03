@@ -6,6 +6,7 @@ Usage:
     python main.py                 # all parts, quick benchmark (N up to 24)
     python main.py --max-n 30      # benchmark up to a larger N
     python main.py --find-limit    # 1b: largest N enumerated in at most 5 minutes
+    python main.py --m 9           # Part 2 with another M (default: from NIA_DIGITS)
 """
 
 import argparse
@@ -31,9 +32,22 @@ from src.microstates import (
     macrostate_histogram_fast,
     macrostate_label,
 )
+from src.thermodynamics import (
+    AGE_OF_UNIVERSE_S,
+    K_B,
+    SECONDS_PER_YEAR,
+    half,
+    harmonic_mean_m,
+    large_n_limits,
+    part2_results,
+)
 
 FIGURES = Path(__file__).parent / "report" / "figures"
 TIME_LIMIT_S = 300.0  # 5 minutes of wall-clock time (question 1b)
+
+# Last two digits of each member's NIA (Part 2): Andrés ...03, Pablo ...27,
+# Malena ...17, Enrique ...51. M = harmonic mean, N = 100 + M.
+NIA_DIGITS = (3, 27, 17, 51)
 
 
 def _time_call(func, n: int, repeats: int = 3) -> tuple[float, float]:
@@ -182,6 +196,102 @@ def part_1d(repeats: int = 3) -> None:
     print("  P_k of the far tails underflows to 0, and memory/plotting of N + 1 points.")
 
 
+def part_2(m: int, m_raw: float | None = None) -> None:
+    """Part 2 (a-i) for N = 100 + M: Table 3, a figure, and the N ~ 1e23 limit (2k)."""
+    n = 100 + m
+    h = half(n)
+    r = part2_results(n, m)
+    print(f"\n=== Part 2: probabilities and entropy for N = 100 + M = {n} ===")
+    if m_raw is not None:
+        print(f"M = harmonic mean of the NIA digits {NIA_DIGITS} = {m_raw:.4f} -> rounded to {m}")
+    if n % 2:
+        print(f"N is odd: 'N/2' is taken as floor(N/2) = {h} (P_{h} = P_{h + 1} by symmetry)")
+    tails_lo, tails_hi = n - (h + 20), n - (h - 20)
+    t8 = r["h_t8_s"]
+
+    def ratio_text(value: float) -> str:
+        return "inf (k < 0: no microstate, P = 0)" if value == float("inf") else f"{value:.6e}"
+
+    rows = [
+        ("a", "P_30", f"{r['a_P30']:.6e}"),
+        ("b", f"P_{h} (k = N/2)", f"{r['b_P_half']:.6e}"),
+        ("c", f"sum P_k, k = {h - 10}..{h + 10} heads", f"{r['c_heads_pm10']:.6f}"),
+        ("d", f"sum P_k, {h - 20}..{h + 20} tails (= {tails_lo}..{tails_hi} heads)",
+         f"{r['d_tails_pm20']:.6f}"),
+        ("e", f"dS(k1={h + 25}, k2={h}) / k_B", f"{r['e_dS']:.6f}  ({r['e_dS'] * K_B:.4e} J/K)"),
+        ("f", f"dS(k1={h + 10}, k2={h}) / k_B", f"{r['f_dS']:.6f}  ({r['f_dS'] * K_B:.4e} J/K)"),
+        ("g", f"dS(k1={h}, k2=20) / k_B", f"{r['g_dS']:.6f}  ({r['g_dS'] * K_B:.4e} J/K)"),
+        ("h", "<t> to get 8 heads (1 throw/s)",
+         f"{t8:.4e} s = {t8 / SECONDS_PER_YEAR:.4e} yr = {t8 / AGE_OF_UNIVERSE_S:.3e} x age of universe"),
+        ("i", f"P_{h} / P_(M+10 = {m + 10})", ratio_text(r["i_ratio_M+10"])),
+        ("i", f"P_{h} / P_(M-10 = {m - 10})", ratio_text(r["i_ratio_M-10"])),
+        ("i", f"P_{h} / P_(N/2+10 = {h + 10})", ratio_text(r["i_ratio_half+10"])),
+        ("i", f"P_{h} / P_(N/2-10 = {h - 10})", ratio_text(r["i_ratio_half-10"])),
+    ]
+    lines = [f"Table 3: Part 2 for N = {n} (M = {m}). Exact values, computed in log-space "
+             "(relative error < 1e-12 against exact integers); no statistical uncertainty."]
+    lines += [f"({q}) {name:<52}{value}" for q, name, value in rows]
+    for line in lines:
+        print(line)
+    out = FIGURES.parent / "table3_part2.txt"
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    print(f"Table written to {out}")
+
+    # Figure: (a) P_k with the windows of c and d; (b) log scale with every k of a-i marked.
+    k = np.arange(n + 1)
+    p = probabilities(n)
+    fig, (ax_a, ax_b) = plt.subplots(1, 2, figsize=(10, 4))
+    ax_a.fill_between(k, p, where=(k >= tails_lo) & (k <= tails_hi), step="mid",
+                      color=COLORS_1C[1], alpha=0.25, label=r"(d) $\pm 20$ tails")
+    ax_a.fill_between(k, p, where=(k >= h - 10) & (k <= h + 10), step="mid",
+                      color=COLORS_1C[0], alpha=0.45, label=r"(c) $\pm 10$ heads")
+    ax_a.plot(k, p, "-", color="#333333", lw=1.2)
+    ax_a.set_xlabel("Number of heads $k$")
+    ax_a.set_ylabel(r"$P_k = \Omega(N,k)/2^N$")
+    ax_a.set_title(f"(a) $N = {n}$: cumulative windows", fontsize=10, loc="left")
+    ax_a.set_xlim(h - 35, h + 35)  # the tails beyond are ~0 on a linear axis
+    ax_a.set_ylim(bottom=0)
+    ax_b.semilogy(k[p > 0], p[p > 0], "-", color="#333333", lw=1.2)
+    marks = {8: "h", 20: "g", 30: "a", m + 10: "i", h: "b", h + 10: "f", h + 25: "e"}
+    for kk, q in marks.items():
+        ax_b.plot(kk, p[kk], "o", color=COLORS_1C[2], ms=5)
+        # (i) k = M + 10 sits next to (g) k = 20: put its label below the curve.
+        offset = (8, -12) if q == "i" else (4, 6)
+        ax_b.annotate(f"({q}) k={kk}", (kk, p[kk]), textcoords="offset points",
+                      xytext=offset, fontsize=7)
+    ax_b.set_xlabel("Number of heads $k$")
+    ax_b.set_ylabel(r"$P_k$ (log scale)")
+    ax_b.set_title("(b) Macrostates used in questions a-i", fontsize=10, loc="left")
+    ax_b.set_xlim(0, n)
+    for ax in (ax_a, ax_b):
+        ax.grid(True, color="#e4e3df", lw=0.6)
+        ax.set_axisbelow(True)
+        for side in ("top", "right"):
+            ax.spines[side].set_visible(False)
+    ax_a.legend(frameon=False, fontsize=8)
+    fig.tight_layout()
+    out = FIGURES / "part2_distribution.pdf"
+    fig.savefig(out)
+    plt.close(fig)
+    print(f"Figure written to {out}")
+
+    # 2k: the same questions for a macroscopic N (Stirling / Gaussian limit).
+    big_n = 1e23
+    big = large_n_limits(big_n, m)
+    print(f"\n=== 2k: the same quantities for N = {big_n:.0e} (Stirling / Gaussian limit) ===")
+    print(f"sigma/mu = 1/sqrt(N)                 {big['sigma_over_mu']:.3e}")
+    print(f"(a) log10 P_30                       {big['a_P30_log10']:.4e}")
+    print(f"(b) P_N/2 ~ sqrt(2/(pi N))           {big['b_P_half']:.3e}")
+    print(f"(c) P(+/-10 heads around N/2)        {big['c_heads_pm10']:.3e}")
+    print(f"(d) P(+/-20 tails around N/2)        {big['d_tails_pm20']:.3e}")
+    print(f"(e) dS/k_B ~ -2 (25)^2 / N           {big['e_dS']:.3e}")
+    print(f"(f) dS/k_B ~ -2 (10)^2 / N           {big['f_dS']:.3e}")
+    print(f"(g) dS/k_B ~ N ln 2                  {big['g_dS']:.4e}")
+    print(f"(h) log10 <t> (s) for 8 heads        {big['h_t8_s_log10']:.4e}")
+    print(f"(i) log10 P_N/2 / P_(M+10)           {big['i_ratio_M+10_log10']:.4e}")
+    print(f"(i) P_N/2 / P_(N/2+10) ~ e^(200/N)   {big['i_ratio_half+10']:.15f}")
+
+
 def find_limit(start_n: int = 24) -> None:
     """1b: enumerate N = start_n, start_n + 1, ... until one run exceeds 5 minutes."""
     print(f"\n=== 1b: largest N enumerated in at most {TIME_LIMIT_S:.0f} s ===")
@@ -208,10 +318,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Statistical Physics Lab 1")
     parser.add_argument("--max-n", type=int, default=24, help="largest N in the 1b benchmark")
     parser.add_argument("--find-limit", action="store_true", help="search the 5-minute limit (slow)")
+    parser.add_argument("--m", type=int, default=None,
+                        help="Part 2 parameter M (default: harmonic mean of NIA_DIGITS)")
     args = parser.parse_args()
     # The fit in part_1b uses N >= 16 and needs at least two points (N = 16 and 18).
     if args.max_n < 18:
         parser.error("--max-n must be >= 18")
+    # The guide restricts N = 100 + M to below 200, and question (i) needs M + 10 <= N.
+    if args.m is not None and not 0 < args.m < 100:
+        parser.error("--m must be between 1 and 99 (N = 100 + M < 200)")
 
     print("Statistical Physics - Lab 1: Microstates of a System of Coins")
     FIGURES.mkdir(parents=True, exist_ok=True)
@@ -220,6 +335,11 @@ def main() -> None:
     part_1b(args.max_n)
     part_1c()
     part_1d()
+    if args.m is None:
+        m, m_raw = harmonic_mean_m(NIA_DIGITS)
+        part_2(m, m_raw)
+    else:
+        part_2(args.m)
     if args.find_limit:
         find_limit()
 
