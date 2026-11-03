@@ -1,0 +1,13 @@
+Table 3: Part 2 for N = 109 (M = 9). Exact values, computed in log-space (relative error < 1e-12 against exact integers); no statistical uncertainty.
+(a) P_30                                                9.374705e-07
+(b) P_54 (k = N/2)                                      7.590261e-02
+(c) sum P_k, k = 44..64 heads                           0.955238
+(d) sum P_k, 34..74 tails (= 35..75 heads)              0.999923
+(e) dS(k1=79, k2=54) / k_B                              -11.301776  (-1.5604e-22 J/K)
+(f) dS(k1=64, k2=54) / k_B                              -1.644575  (-2.2706e-23 J/K)
+(g) dS(k1=54, k2=20) / k_B                              23.340889  (3.2226e-22 J/K)
+(h) <t> to get 8 heads (1 throw/s)                      1.7084e+21 s = 5.4136e+13 yr = 3.927e+03 x age of universe
+(i) P_54 / P_(M+10 = 19)                                6.166400e+10
+(i) P_54 / P_(M-10 = -1)                                inf (k < 0: no microstate, P = 0)
+(i) P_54 / P_(N/2+10 = 64)                              5.178811e+00
+(i) P_54 / P_(N/2-10 = 44)                              7.480504e+00
